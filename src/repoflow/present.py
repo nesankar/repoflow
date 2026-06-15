@@ -7,6 +7,7 @@ import webbrowser
 from importlib import resources
 
 from . import schema
+from .ignore import protect
 from .schema import NODE_KINDS, EDGE_KINDS
 
 
@@ -106,7 +107,7 @@ def render_html(graph):
     return template.replace("__TITLE__", title).replace("__DATA__", blob)
 
 
-def present(source=None, output=None, open_browser=True, demo=False):
+def present(source=None, output=None, open_browser=True, demo=False, gitignore=True):
     """Read a graph JSON (or the bundled demo), write HTML, and open it."""
     if demo:
         graph = load_sample()
@@ -138,6 +139,9 @@ def present(source=None, output=None, open_browser=True, demo=False):
     out = output or default_out
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(render_html(graph))
+
+    # Generated graph + its source JSON are artifacts — keep them out of git.
+    protect([out] + ([] if demo else [source]), enabled=gitignore)
 
     abspath = os.path.abspath(out)
     print("[repoflow] Wrote %s" % abspath, file=sys.stderr)

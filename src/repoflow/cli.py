@@ -25,6 +25,8 @@ def main(argv=None):
     c.add_argument("-o", "--output", default="repoflow.json",
                    help="Where the AI should write the graph (default: repoflow.json).")
     c.add_argument("--no-copy", action="store_true", help="Do not copy the prompt to the clipboard.")
+    c.add_argument("--no-gitignore", action="store_true",
+                   help="Do not add the generated graph files to the repo's .gitignore.")
 
     # ---- stage 2 -----------------------------------------------------------
     p = sub.add_parser(
@@ -37,14 +39,17 @@ def main(argv=None):
                    help="HTML file to write (default: alongside the JSON).")
     p.add_argument("--no-open", action="store_true", help="Write the HTML but do not open a browser.")
     p.add_argument("--demo", action="store_true", help="Render the bundled demo graph instead of a file.")
+    p.add_argument("--no-gitignore", action="store_true",
+                   help="Do not add the generated graph files to the repo's .gitignore.")
 
     args = parser.parse_args(argv)
 
     if args.command == "compute":
-        compute(root=args.root, output=args.output, copy=not args.no_copy)
+        compute(root=args.root, output=args.output, copy=not args.no_copy,
+                gitignore=not args.no_gitignore)
     elif args.command == "present":
-        present(source=args.source, output=args.output,
-                open_browser=not args.no_open, demo=args.demo)
+        present(source=args.source, output=args.output, open_browser=not args.no_open,
+                demo=args.demo, gitignore=not args.no_gitignore)
     else:
         parser.print_help()
 

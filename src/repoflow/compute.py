@@ -1,9 +1,11 @@
 """Stage 1: print the analysis prompt for the user's AI assistant."""
 
+import os
 import shutil
 import subprocess
 import sys
 
+from .ignore import protect
 from .prompt import build_prompt
 
 
@@ -26,10 +28,15 @@ def _try_clipboard(text):
     return False
 
 
-def compute(root=".", output="repoflow.json", copy=True):
+def compute(root=".", output="repoflow.json", copy=True, gitignore=True):
     """Build the prompt, print it, and (best effort) put it on the clipboard."""
     prompt = build_prompt(root=root, output=output)
     print(prompt)
+
+    # The graph the assistant is about to write — and the HTML present will make
+    # from it — are generated artifacts; keep them out of the user's repo.
+    html = os.path.splitext(output)[0] + ".html"
+    protect([output, html], enabled=gitignore)
 
     if copy and _try_clipboard(prompt):
         print("\n[repoflow] Prompt copied to your clipboard — paste it into your AI assistant.",
