@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "repo": {
+    "name": "tasks-demo",
+    "root": ".",
+    "summary": "A tiny task API — request handlers call a service, which reads & writes a database. (Demo graph shipped with repoflow.)"
+  },
+  "nodes": [
+    {"id": "app/api.py:create_task", "label": "create_task", "kind": "entrypoint", "file": "app/api.py", "line": 14,
+     "signature": "def create_task(req: Request) -> Response",
+     "docstring": "POST /tasks — validates the body and asks the service to create a task."},
+    {"id": "app/api.py:list_tasks", "label": "list_tasks", "kind": "entrypoint", "file": "app/api.py", "line": 27,
+     "signature": "def list_tasks(req: Request) -> Response",
+     "docstring": "GET /tasks — returns every task as JSON."},
+
+    {"id": "app/service.py:TaskService", "label": "TaskService", "kind": "class", "file": "app/service.py", "line": 6,
+     "docstring": "Business logic for tasks. Owns the Database and the validation rules."},
+    {"id": "app/service.py:TaskService.add", "label": "add", "kind": "method", "file": "app/service.py", "line": 11,
+     "parent": "app/service.py:TaskService", "signature": "def add(self, title: str) -> Task",
+     "docstring": "Create and persist a new task, returning the stored Task."},
+    {"id": "app/service.py:TaskService.all", "label": "all", "kind": "method", "file": "app/service.py", "line": 18,
+     "parent": "app/service.py:TaskService", "signature": "def all(self) -> list[Task]",
+     "docstring": "Return every task currently stored."},
+
+    {"id": "app/db.py:Database", "label": "Database", "kind": "class", "file": "app/db.py", "line": 8,
+     "docstring": "Thin wrapper over the SQL connection."},
+    {"id": "app/db.py:Database.insert", "label": "insert", "kind": "method", "file": "app/db.py", "line": 13,
+     "parent": "app/db.py:Database", "signature": "def insert(self, row: dict) -> int",
+     "docstring": "Insert a row and return its new primary key."},
+    {"id": "app/db.py:Database.query", "label": "query", "kind": "method", "file": "app/db.py", "line": 21,
+     "parent": "app/db.py:Database", "signature": "def query(self, sql: str) -> list[dict]",
+     "docstring": "Run a read query and return rows as dicts."},
+
+    {"id": "app/models.py:Task", "label": "Task", "kind": "class", "file": "app/models.py", "line": 4,
+     "docstring": "Dataclass: id, title, created_at."},
+
+    {"id": "store:tasks", "label": "tasks table", "kind": "datastore", "file": "app/db.py",
+     "docstring": "PostgreSQL `tasks` table (id, title, created_at)."},
+    {"id": "ext:sqlalchemy", "label": "sqlalchemy", "kind": "external", "file": "app/db.py",
+     "docstring": "Third-party SQL toolkit used for the connection and query execution."}
+  ],
+  "edges": [
+    {"source": "app/api.py:create_task", "target": "app/service.py:TaskService.add", "kind": "call",
+     "data_type": "title: str", "description": "Handler forwards the validated title to the service."},
+    {"source": "app/api.py:list_tasks", "target": "app/service.py:TaskService.all", "kind": "call",
+     "data_type": "()", "description": "Handler asks the service for all tasks."},
+
+    {"source": "app/service.py:TaskService.add", "target": "app/db.py:Database.insert", "kind": "call",
+     "data_type": "row: dict", "description": "Service serializes the task and inserts it."},
+    {"source": "app/service.py:TaskService.all", "target": "app/db.py:Database.query", "kind": "call",
+     "data_type": "sql: str", "description": "Service runs SELECT * FROM tasks."},
+
+    {"source": "app/service.py:TaskService", "target": "app/db.py:Database", "kind": "instantiation",
+     "data_type": "Database", "description": "The service creates and holds a Database instance."},
+
+    {"source": "app/db.py:Database.insert", "target": "store:tasks", "kind": "dataflow",
+     "data_type": "INSERT INTO tasks (title, created_at)", "description": "New row written to the table."},
+    {"source": "app/db.py:Database.query", "target": "store:tasks", "kind": "dataflow",
+     "data_type": "SELECT * FROM tasks", "description": "Reads all task rows."},
+    {"source": "app/db.py:Database", "target": "ext:sqlalchemy", "kind": "import",
+     "data_type": "Engine, text", "description": "Database is built on top of sqlalchemy."},
+
+    {"source": "store:tasks", "target": "app/service.py:TaskService.all", "kind": "return",
+     "data_type": "list[Task]", "description": "Rows mapped back to Task objects and returned."},
+    {"source": "app/service.py:TaskService.add", "target": "app/models.py:Task", "kind": "instantiation",
+     "data_type": "Task", "description": "Builds a Task value object from the stored row."}
+  ]
+}

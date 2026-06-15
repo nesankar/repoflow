@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>repoflow — tasks-demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+<!-- ELK gives a logical, layered, direction-aware layout that respects the file/class containers. -->
+<script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-elk@2.2.0/dist/cytoscape-elk.js"></script>
+<!-- fcose is the organic fallback if ELK is unavailable. -->
+<script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<style>
+  :root {
+    --bg: #0b1120; --panel: rgba(17,24,39,.82); --panel-2: #1f2937;
+    --ink: #e5e9f0; --muted: #8b95a7; --line: rgba(148,163,184,.18); --accent: #7dd3fc;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%;
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 800px at 78% -10%, rgba(59,130,246,.10), transparent 60%),
+      radial-gradient(1000px 700px at 10% 110%, rgba(168,85,247,.10), transparent 55%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #cy { position: absolute; inset: 0; }
+
+  header {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; align-items: baseline; gap: 14px; padding: 12px 18px;
+    background: linear-gradient(180deg, rgba(15,23,42,.92), rgba(15,23,42,0));
+    pointer-events: none;
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: .2px; }
+  header h1 .logo { color: var(--accent); }
+  header .summary { color: var(--muted); font-size: 13px; max-width: 52vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .counts { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  .panel {
+    position: absolute; z-index: 6; background: rgba(30,41,59,.92);
+    border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  /* Controls */
+  #controls { top: 54px; left: 18px; padding: 8px; display: flex; gap: 6px; align-items: center; }
+  #controls input {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 8px; padding: 6px 9px; font-size: 13px; width: 180px; outline: none;
+  }
+  #controls input:focus { border-color: var(--accent); }
+  #controls button {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+  }
+  #controls button:hover { border-color: var(--accent); color: #fff; }
+
+  /* Legend */
+  #legend { top: 54px; right: 18px; width: 270px; max-height: 78vh; overflow: auto; padding: 12px 14px; }
+  #legend h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+  #legend h2:not(:first-child) { margin-top: 14px; }
+  .legend-row { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
+  .legend-row svg { flex: none; }
+  .legend-row .lbl { font-weight: 600; }
+  .legend-row .desc { color: var(--muted); font-size: 11.5px; }
+  .legend-row .text { display: flex; flex-direction: column; line-height: 1.25; }
+  #legend .hint { color: var(--muted); font-size: 11px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+
+  /* Tooltip */
+  #tip {
+    position: absolute; z-index: 20; max-width: 360px; display: none;
+    background: rgba(2,6,23,.96); border: 1px solid var(--panel-2); border-radius: 10px;
+    padding: 10px 12px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 12px 28px rgba(0,0,0,.5);
+    pointer-events: none;
+  }
+  #tip .t-title { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  #tip .t-kind { display: inline-block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
+    color: #0b1220; padding: 1px 7px; border-radius: 999px; margin-bottom: 6px; font-weight: 700; }
+  #tip code { background: rgba(148,163,184,.15); padding: 1px 5px; border-radius: 5px; color: #cbd5e1; }
+  #tip .t-meta { color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+  #tip .t-doc { color: var(--ink); }
+  #tip .t-row { margin-top: 5px; }
+  #tip .t-row b { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="cy"></div>
+
+<header>
+  <h1><span class="logo">◆</span> repoflow <span id="repo-name" style="color:var(--muted);font-weight:500"></span></h1>
+  <span class="summary" id="summary"></span>
+  <span class="counts" id="counts"></span>
+</header>
+
+<div id="controls" class="panel">
+  <input id="search" type="text" placeholder="Search nodes…" autocomplete="off">
+  <button id="fit">Fit</button>
+  <button id="relayout">Re-layout</button>
+</div>
+
+<div id="legend" class="panel">
+  <h2>Components</h2>
+  <div id="legend-nodes"></div>
+  <h2>Relationships</h2>
+  <div id="legend-edges"></div>
+  <div class="hint">Hover a node for its docstring &amp; signature; hover an edge for the data it carries. Click a node or edge to focus it &amp; its neighbors — click the background to reset. Drag to pan, scroll to zoom. Boxes group code by file &amp; class.</div>
+</div>
+
+<div id="tip"></div>
+
+<script>
+const DATA = {"meta": {"name": "tasks-demo", "root": ".", "summary": "A tiny task API \u2014 request handlers call a service, which reads & writes a database. (Demo graph shipped with repoflow.)", "counts": {"nodes": 11, "edges": 10}}, "elements": [{"data": {"id": "file::app/api.py", "label": "api.py", "fullpath": "app/api.py", "kind": "file-group"}, "classes": "group"}, {"data": {"id": "file::app/service.py", "label": "service.py", "fullpath": "app/service.py", "kind": "file-group"}, "classes": "group"}, {"data": {"id": "file::app/db.py", "label": "db.py", "fullpath": "app/db.py", "kind": "file-group"}, "classes": "group"}, {"data": {"id": "file::app/models.py", "label": "models.py", "fullpath": "app/models.py", "kind": "file-group"}, "classes": "group"}, {"data": {"id": "app/api.py:create_task", "label": "create_task", "kind": "entrypoint", "file": "app/api.py", "line": 14, "signature": "def create_task(req: Request) -> Response", "docstring": "POST /tasks \u2014 validates the body and asks the service to create a task.", "parent": "file::app/api.py"}}, {"data": {"id": "app/api.py:list_tasks", "label": "list_tasks", "kind": "entrypoint", "file": "app/api.py", "line": 27, "signature": "def list_tasks(req: Request) -> Response", "docstring": "GET /tasks \u2014 returns every task as JSON.", "parent": "file::app/api.py"}}, {"data": {"id": "app/service.py:TaskService", "label": "TaskService", "kind": "class", "file": "app/service.py", "line": 6, "signature": "", "docstring": "Business logic for tasks. Owns the Database and the validation rules.", "parent": "file::app/service.py"}}, {"data": {"id": "app/service.py:TaskService.add", "label": "add", "kind": "method", "file": "app/service.py", "line": 11, "signature": "def add(self, title: str) -> Task", "docstring": "Create and persist a new task, returning the stored Task.", "parent": "app/service.py:TaskService"}}, {"data": {"id": "app/service.py:TaskService.all", "label": "all", "kind": "method", "file": "app/service.py", "line": 18, "signature": "def all(self) -> list[Task]", "docstring": "Return every task currently stored.", "parent": "app/service.py:TaskService"}}, {"data": {"id": "app/db.py:Database", "label": "Database", "kind": "class", "file": "app/db.py", "line": 8, "signature": "", "docstring": "Thin wrapper over the SQL connection.", "parent": "file::app/db.py"}}, {"data": {"id": "app/db.py:Database.insert", "label": "insert", "kind": "method", "file": "app/db.py", "line": 13, "signature": "def insert(self, row: dict) -> int", "docstring": "Insert a row and return its new primary key.", "parent": "app/db.py:Database"}}, {"data": {"id": "app/db.py:Database.query", "label": "query", "kind": "method", "file": "app/db.py", "line": 21, "signature": "def query(self, sql: str) -> list[dict]", "docstring": "Run a read query and return rows as dicts.", "parent": "app/db.py:Database"}}, {"data": {"id": "app/models.py:Task", "label": "Task", "kind": "class", "file": "app/models.py", "line": 4, "signature": "", "docstring": "Dataclass: id, title, created_at.", "parent": "file::app/models.py"}}, {"data": {"id": "store:tasks", "label": "tasks table", "kind": "datastore", "file": "app/db.py", "line": "", "signature": "", "docstring": "PostgreSQL `tasks` table (id, title, created_at).", "parent": "file::app/db.py"}}, {"data": {"id": "ext:sqlalchemy", "label": "sqlalchemy", "kind": "external", "file": "app/db.py", "line": "", "signature": "", "docstring": "Third-party SQL toolkit used for the connection and query execution.", "parent": "file::app/db.py"}}, {"data": {"id": "edge-0", "source": "app/api.py:create_task", "target": "app/service.py:TaskService.add", "kind": "call", "label": "", "data_type": "title: str", "description": "Handler forwards the validated title to the service."}}, {"data": {"id": "edge-1", "source": "app/api.py:list_tasks", "target": "app/service.py:TaskService.all", "kind": "call", "label": "", "data_type": "()", "description": "Handler asks the service for all tasks."}}, {"data": {"id": "edge-2", "source": "app/service.py:TaskService.add", "target": "app/db.py:Database.insert", "kind": "call", "label": "", "data_type": "row: dict", "description": "Service serializes the task and inserts it."}}, {"data": {"id": "edge-3", "source": "app/service.py:TaskService.all", "target": "app/db.py:Database.query", "kind": "call", "label": "", "data_type": "sql: str", "description": "Service runs SELECT * FROM tasks."}}, {"data": {"id": "edge-4", "source": "app/service.py:TaskService", "target": "app/db.py:Database", "kind": "instantiation", "label": "", "data_type": "Database", "description": "The service creates and holds a Database instance."}}, {"data": {"id": "edge-5", "source": "app/db.py:Database.insert", "target": "store:tasks", "kind": "dataflow", "label": "", "data_type": "INSERT INTO tasks (title, created_at)", "description": "New row written to the table."}}, {"data": {"id": "edge-6", "source": "app/db.py:Database.query", "target": "store:tasks", "kind": "dataflow", "label": "", "data_type": "SELECT * FROM tasks", "description": "Reads all task rows."}}, {"data": {"id": "edge-7", "source": "app/db.py:Database", "target": "ext:sqlalchemy", "kind": "import", "label": "", "data_type": "Engine, text", "description": "Database is built on top of sqlalchemy."}}, {"data": {"id": "edge-8", "source": "store:tasks", "target": "app/service.py:TaskService.all", "kind": "return", "label": "", "data_type": "list[Task]", "description": "Rows mapped back to Task objects and returned."}}, {"data": {"id": "edge-9", "source": "app/service.py:TaskService.add", "target": "app/models.py:Task", "kind": "instantiation", "label": "", "data_type": "Task", "description": "Builds a Task value object from the stored row."}}], "nodeKinds": {"module": {"shape": "round-rectangle", "color": "#64748b", "description": "Module / file-level scope"}, "class": {"shape": "round-rectangle", "color": "#a78bfa", "description": "Class definition"}, "function": {"shape": "ellipse", "color": "#60a5fa", "description": "Free function"}, "method": {"shape": "ellipse", "color": "#22d3ee", "description": "Class method"}, "entrypoint": {"shape": "round-hexagon", "color": "#fbbf24", "description": "Entry point (CLI / main / handler)"}, "external": {"shape": "round-diamond", "color": "#f472b6", "description": "External / third-party dependency"}, "datastore": {"shape": "barrel", "color": "#34d399", "description": "Data store (DB, file, cache, queue)"}}, "edgeKinds": {"call": {"color": "#94a3b8", "style": "solid", "description": "Function / method call"}, "dataflow": {"color": "#2563eb", "style": "solid", "description": "Data flows from source to target"}, "import": {"color": "#cbd5e1", "style": "dashed", "description": "Import / module dependency"}, "inheritance": {"color": "#8b5cf6", "style": "solid", "description": "Subclass \u2192 superclass"}, "instantiation": {"color": "#f59e0b", "style": "dotted", "description": "Creates an instance of"}, "return": {"color": "#10b981", "style": "solid", "description": "Returns a value to caller"}}};
+
+/* ---- small helpers to draw legend swatches as inline SVG ---------------- */
+function starPoints(cx, cy, outer, inner, n) {
+  let pts = [];
+  for (let i = 0; i < n * 2; i++) {
+    const r = i % 2 ? inner : outer;
+    const a = (Math.PI / n) * i - Math.PI / 2;
+    pts.push((cx + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1));
+  }
+  return pts.join(" ");
+}
+function nodeSwatch(shape, color) {
+  const f = `fill="${color}" stroke="rgba(255,255,255,.30)" stroke-width="1"`;
+  let inner;
+  switch (shape) {
+    case "rectangle":       inner = `<rect x="2" y="2" width="20" height="12" ${f}/>`; break;
+    case "round-rectangle": inner = `<rect x="2" y="2" width="20" height="12" rx="4.5" ${f}/>`; break;
+    case "diamond":
+    case "round-diamond":   inner = `<polygon points="12,1.5 22.5,8 12,14.5 1.5,8" ${f} stroke-linejoin="round"/>`; break;
+    case "hexagon":
+    case "round-hexagon":   inner = `<polygon points="7,2 17,2 23,8 17,14 7,14 1,8" ${f} stroke-linejoin="round"/>`; break;
+    case "star":            inner = `<polygon points="${starPoints(12,8,7,2.9,5)}" ${f}/>`; break;
+    case "barrel":          inner = `<path d="M4,2 H20 a3,6 0 0 1 0,12 H4 a3,6 0 0 1 0,-12 Z" ${f}/>`; break;
+    default:                inner = `<ellipse cx="12" cy="8" rx="10" ry="6.5" ${f}/>`; // ellipse
+  }
+  return `<svg width="24" height="16" viewBox="0 0 24 16">${inner}</svg>`;
+}
+function edgeSwatch(color, style) {
+  const dash = style === "dashed" ? "5 4" : style === "dotted" ? "2 3" : "0";
+  return `<svg width="24" height="16" viewBox="0 0 24 16">
+    <line x1="1" y1="8" x2="18" y2="8" stroke="${color}" stroke-width="2.2" stroke-dasharray="${dash}"/>
+    <polygon points="18,4 24,8 18,12" fill="${color}"/></svg>`;
+}
+
+/* ---- build the legend from the same kind tables the graph is styled from -- */
+(function buildLegend() {
+  const nodeBox = document.getElementById("legend-nodes");
+  for (const [kind, d] of Object.entries(DATA.nodeKinds)) {
+    nodeBox.insertAdjacentHTML("beforeend",
+      `<div class="legend-row">${nodeSwatch(d.shape, d.color)}
+        <span class="text"><span class="lbl">${kind}</span><span class="desc">${d.description}</span></span></div>`);
+  }
+  const edgeBox = document.getElementById("legend-edges");
+  for (const [kind, d] of Object.entries(DATA.edgeKinds)) {
+    edgeBox.insertAdjacentHTML("beforeend",
+      `<div class="legend-row">${edgeSwatch(d.color, d.style)}
+        <span class="text"><span class="lbl">${kind}</span><span class="desc">${d.description}</span></span></div>`);
+  }
+})();
+
+/* ---- header ------------------------------------------------------------- */
+document.getElementById("repo-name").textContent = "· " + DATA.meta.name;
+document.getElementById("summary").textContent = DATA.meta.summary || "";
+document.getElementById("counts").textContent =
+  DATA.meta.counts.nodes + " nodes · " + DATA.meta.counts.edges + " edges";
+
+/* ---- derive Cytoscape styles from the kind tables ----------------------- */
+function buildStyle() {
+  const s = [
+    // leaf components: small, quiet, with the label set *below* the glyph so the
+    // graph reads like a diagram rather than a field of labelled bubbles.
+    { selector: "node", style: {
+        "label": "data(label)", "color": "#cbd5e1", "font-size": 10, "font-weight": 500,
+        "text-valign": "bottom", "text-halign": "center", "text-margin-y": 5,
+        "text-wrap": "wrap", "text-max-width": 130,
+        "width": 18, "height": 18, "border-width": 1, "border-color": "rgba(255,255,255,.22)",
+        "background-opacity": 0.95,
+        "text-outline-width": 2.5, "text-outline-color": "#0b1120", "text-outline-opacity": 0.85,
+        "transition-property": "opacity, border-color, border-width", "transition-duration": "140ms",
+        "overlay-opacity": 0 } },
+    // compound containers: files and classes-with-methods — faint, soft cards.
+    { selector: "node:parent", style: {
+        "background-opacity": 0.045, "background-color": "#94a3b8", "border-width": 1,
+        "border-color": "rgba(148,163,184,.30)", "shape": "round-rectangle",
+        "label": "data(label)", "text-valign": "top", "text-halign": "center",
+        "font-size": 10.5, "font-weight": 600, "color": "#94a3b8", "padding": "22px",
+        "text-margin-y": -4, "text-outline-opacity": 0 } },
+    { selector: 'node[kind="file-group"]', style: {
+        "background-opacity": 0.05, "border-style": "dashed", "border-color": "rgba(148,163,184,.28)" } },
+    // edges: thin, smoothly curved, with small understated arrowheads.
+    { selector: "edge", style: {
+        "width": 1.3, "curve-style": "unbundled-bezier",
+        "control-point-distances": [26], "control-point-weights": [0.5],
+        "line-cap": "round", "opacity": 0.85,
+        "target-arrow-shape": "triangle", "arrow-scale": 0.85,
+        "line-color": "#7c8aa0", "target-arrow-color": "#7c8aa0",
+        "label": "data(label)", "font-size": 8.5, "font-weight": 500, "color": "#9aa6ba",
+        "text-rotation": "autorotate", "text-background-color": "#0b1120",
+        "text-background-opacity": 0.9, "text-background-padding": 2, "overlay-opacity": 0 } },
+    { selector: ".dim", style: { "opacity": 0.08, "text-opacity": 0.05 } },
+    { selector: "node.hot", style: { "border-color": "#7dd3fc", "border-width": 2.5,
+        "text-outline-color": "#0b1120", "color": "#f1f5f9", "z-index": 99 } },
+    { selector: "edge.hot", style: { "line-color": "#7dd3fc", "target-arrow-color": "#7dd3fc",
+        "width": 2.2, "opacity": 1, "z-index": 99 } },
+  ];
+  for (const [kind, d] of Object.entries(DATA.nodeKinds)) {
+    // give the non-round glyphs a touch more room so labels-below stay legible.
+    const big = (d.shape !== "ellipse");
+    s.push({ selector: `node[kind="${kind}"]`, style: {
+      "shape": d.shape, "background-color": d.color,
+      "width": big ? 24 : 18, "height": big ? 20 : 18 } });
+  }
+  for (const [kind, d] of Object.entries(DATA.edgeKinds)) {
+    const st = { selector: `edge[kind="${kind}"]`, style: { "line-color": d.color, "target-arrow-color": d.color } };
+    if (d.style !== "solid") { st.style["line-style"] = d.style; }
+    s.push(st);
+  }
+  return s;
+}
+
+/* ---- layout ------------------------------------------------------------- */
+/* Prefer ELK 'layered': a logical, direction-aware flow that follows the
+   arrows and respects the file/class containers. Fall back to fcose (organic),
+   then cose, if the CDN is unavailable. */
+function pickLayout() {
+  try {
+    if (window.ELK && window.cytoscapeElk) {
+      cytoscape.use(window.cytoscapeElk);
+      return { name: "elk", nodeDimensionsIncludeLabels: true, fit: true, padding: 40,
+        elk: {
+          "algorithm": "layered",
+          "elk.direction": "RIGHT",
+          "elk.hierarchyHandling": "INCLUDE_CHILDREN",
+          "elk.layered.spacing.nodeNodeBetweenLayers": 70,
+          "elk.spacing.nodeNode": 36,
+          "elk.layered.spacing.edgeNodeBetweenLayers": 24,
+          "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+          "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+          "elk.padding": "[top=28,left=28,bottom=28,right=28]",
+        } };
+    }
+  } catch (e) {}
+  try {
+    if (window.cytoscapeFcose) {
+      cytoscape.use(window.cytoscapeFcose);
+      return { name: "fcose", quality: "proof", animate: true, animationDuration: 600,
+        randomize: true, nodeSeparation: 95, idealEdgeLength: 110, nodeRepulsion: 8000,
+        padding: 40, packComponents: true };
+    }
+  } catch (e) {}
+  return { name: "cose", animate: true, padding: 40, nodeOverlap: 20, idealEdgeLength: 100, nestingFactor: 1.1 };
+}
+const layoutOpts = pickLayout();
+
+const cy = cytoscape({
+  container: document.getElementById("cy"),
+  elements: DATA.elements,
+  style: buildStyle(),
+  layout: layoutOpts,
+  wheelSensitivity: 0.2,
+  minZoom: 0.05, maxZoom: 3,
+});
+
+/* ---- tooltips ----------------------------------------------------------- */
+const tip = document.getElementById("tip");
+function kindColor(kind) { return (DATA.nodeKinds[kind] || {}).color || "#94a3b8"; }
+function showTip(html, ev) {
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const x = ev.originalEvent.clientX, y = ev.originalEvent.clientY;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(x + 14, window.innerWidth - w - 8) + "px";
+  tip.style.top = Math.max(8, Math.min(y + 14, window.innerHeight - h - 8)) + "px";
+}
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+cy.on("mouseover", "node", e => {
+  const d = e.target.data();
+  if (d.kind === "file-group") {
+    showTip(`<div class="t-title">${esc(d.fullpath || d.label)}</div><div class="t-meta">file</div>`, e);
+    return;
+  }
+  let html = `<span class="t-kind" style="background:${kindColor(d.kind)}">${esc(d.kind)}</span>`;
+  html += `<div class="t-title">${esc(d.label)}</div>`;
+  if (d.file) html += `<div class="t-meta">${esc(d.file)}${d.line ? ":" + esc(d.line) : ""}</div>`;
+  if (d.signature) html += `<div class="t-row"><code>${esc(d.signature)}</code></div>`;
+  html += `<div class="t-doc">${d.docstring ? esc(d.docstring) : "<i>no docstring</i>"}</div>`;
+  showTip(html, e);
+});
+cy.on("mouseover", "edge", e => {
+  const d = e.target.data();
+  const k = DATA.edgeKinds[d.kind] || {};
+  let html = `<span class="t-kind" style="background:${k.color || "#94a3b8"}">${esc(d.kind)}</span>`;
+  html += `<div class="t-row"><b>data:</b> ${d.data_type ? "<code>" + esc(d.data_type) + "</code>" : "<i>unknown</i>"}</div>`;
+  if (d.description) html += `<div class="t-row">${esc(d.description)}</div>`;
+  showTip(html, e);
+});
+cy.on("mouseout", "node, edge", () => { tip.style.display = "none"; });
+cy.on("pan zoom drag", () => { tip.style.display = "none"; });
+
+/* ---- click to focus: keep the clicked element + its neighbors (and their
+   containing class/file boxes) lit; dim the rest. Stays until you click again
+   or click the empty background. ------------------------------------------ */
+function focus(keep, hot) {
+  // Always keep the ancestors (parent class / file box) of anything we keep,
+  // so focused nodes never get swallowed by a dimmed container.
+  keep = keep.union(keep.ancestors());
+  cy.batch(() => {
+    cy.elements().removeClass("hot").addClass("dim");
+    keep.removeClass("dim");
+    hot.addClass("hot");
+  });
+}
+
+cy.on("tap", "node", e => {
+  const n = e.target;
+  // A node + its edges + adjacent nodes. For a class/file box, also everything
+  // inside it and *their* neighbors.
+  let keep = n.closedNeighborhood();
+  if (n.isParent()) keep = keep.union(n.descendants().closedNeighborhood());
+  focus(keep, keep.edgesWith(keep).union(n));
+});
+
+cy.on("tap", "edge", e => {
+  const ed = e.target;
+  focus(ed.connectedNodes().union(ed), ed);
+});
+
+// Tapping the empty background clears the focus.
+cy.on("tap", e => { if (e.target === cy) cy.elements().removeClass("dim hot"); });
+
+/* ---- search: highlight matches, dim the rest --------------------------- */
+document.getElementById("search").addEventListener("input", ev => {
+  const q = ev.target.value.trim().toLowerCase();
+  cy.elements().removeClass("dim hot");
+  if (!q) return;
+  const match = cy.nodes().filter(n => n.data("kind") !== "file-group" &&
+      ((n.data("label") || "") + " " + (n.data("file") || "")).toLowerCase().includes(q));
+  if (match.length === 0) return;
+  const keep = match.union(match.connectedEdges()).union(match.ancestors());
+  cy.elements().addClass("dim");
+  keep.removeClass("dim");
+  match.addClass("hot");
+});
+
+/* ---- controls ---------------------------------------------------------- */
+document.getElementById("fit").onclick = () => cy.animate({ fit: { padding: 30 }, duration: 400 });
+document.getElementById("relayout").onclick = () => cy.layout(layoutOpts).run();
+cy.ready(() => cy.fit(undefined, 40));
+</script>
+</body>
+</html>
