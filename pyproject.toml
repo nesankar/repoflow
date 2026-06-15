@@ -9,7 +9,7 @@ description = "Turn an AI-generated code property graph into a beautiful, intera
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "Nathan Sankary", email = "nesankary@gmail.com" }]
+authors = [{ name = "", email = "" }]
 keywords = ["ai", "code-property-graph", "static-analysis", "dataflow", "visualization", "cytoscape"]
 classifiers = [
     "Programming Language :: Python :: 3",
