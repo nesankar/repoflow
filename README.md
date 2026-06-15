@@ -8,6 +8,43 @@ codebase into an interactive **code-property + data-flow graph** — functions,
 classes, files, external dependencies and data stores, with arrows showing how
 data actually moves between them.
 
+## Demo
+
+See it instantly, no setup:
+
+```bash
+pip install repoflow
+repoflow present --demo      # opens an interactive graph in your browser
+```
+
+That renders a bundled example. Here's the idea in miniature — a tiny
+`request → service → database` flow:
+
+```json
+{
+  "nodes": [
+    { "id": "api:create_task", "label": "create_task", "kind": "entrypoint" },
+    { "id": "svc:add",         "label": "add",         "kind": "method",
+      "docstring": "Persist a new task." },
+    { "id": "db:tasks",        "label": "tasks",       "kind": "datastore" }
+  ],
+  "edges": [
+    { "source": "api:create_task", "target": "svc:add",  "kind": "call",
+      "data_type": "title: str" },
+    { "source": "svc:add",         "target": "db:tasks", "kind": "dataflow",
+      "data_type": "INSERT INTO tasks" }
+  ]
+}
+```
+
+…which becomes an interactive graph. Hover a node for its docstring, hover an
+edge for the data flowing across it:
+
+```
+  ⬡ create_task ──call (title: str)──▶  ◯ add ──dataflow (INSERT INTO tasks)──▶  ⛁ tasks
+   entrypoint                            method                                   datastore
+```
+
 It works in two stages.
 
 ### 1. `repoflow compute`

@@ -181,7 +181,9 @@ function edgeSwatch(color, style) {
 
 /* ---- header ------------------------------------------------------------- */
 document.getElementById("repo-name").textContent = "· " + DATA.meta.name;
-document.getElementById("summary").textContent = DATA.meta.summary || "";
+const summaryEl = document.getElementById("summary");
+summaryEl.textContent = DATA.meta.summary || "";
+summaryEl.title = DATA.meta.summary || "";   // full text on hover when truncated
 document.getElementById("counts").textContent =
   DATA.meta.counts.nodes + " nodes · " + DATA.meta.counts.edges + " edges";
 
