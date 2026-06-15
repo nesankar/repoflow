@@ -61,6 +61,19 @@ From source:
 pip install -e .
 ```
 
+## Generated files stay out of git and Docker images
+
+The JSON graph and the HTML render are build artifacts, not source. Whenever
+repoflow writes (or is about to write) them, it adds them to the right ignore
+files automatically, in any project you run it in:
+
+- inside a git repo → its `.gitignore`
+- inside a Docker build context (a dir with a `Dockerfile` / compose file /
+  existing `.dockerignore`) → that context's `.dockerignore`
+
+So the artifacts are never committed or baked into an image by accident. Pass
+`--no-gitignore` to opt out.
+
 ## Design
 
 - **Zero runtime dependencies.** Pure Python standard library.
