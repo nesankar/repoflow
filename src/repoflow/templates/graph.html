@@ -15,6 +15,8 @@
 <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<!-- collapsible file/class containers for large graphs. -->
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-expand-collapse@4.1.1/cytoscape-expand-collapse.js"></script>
 <style>
   :root {
     --bg: #0b1120; --panel: rgba(17,24,39,.82); --panel-2: #1f2937;
@@ -31,7 +33,11 @@
     -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
   code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
-  #cy { position: absolute; inset: 0; }
+  /* z-index:0 makes #cy a stacking context, so the expand-collapse extension's
+     overlay canvas (z-index 999, no pointer-events) stays trapped below the
+     control/legend panels instead of swallowing their clicks. */
+  #cy { position: absolute; inset: 0; z-index: 0; }
+  .expand-collapse-canvas { pointer-events: none; }
 
   header {
     position: absolute; top: 0; left: 0; right: 0; z-index: 5;
@@ -67,10 +73,14 @@
   #legend h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
   #legend h2:not(:first-child) { margin-top: 14px; }
   .legend-row { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
+  .legend-row.toggle { cursor: pointer; border-radius: 6px; margin: 0 -6px; padding: 3px 6px; }
+  .legend-row.toggle:hover { background: rgba(148,163,184,.10); }
   .legend-row svg { flex: none; }
   .legend-row .lbl { font-weight: 600; }
   .legend-row .desc { color: var(--muted); font-size: 11.5px; }
   .legend-row .text { display: flex; flex-direction: column; line-height: 1.25; }
+  .legend-row.off { opacity: 0.4; }
+  .legend-row.off .lbl { text-decoration: line-through; }
   #legend .hint { color: var(--muted); font-size: 11px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 
   /* Tooltip */
@@ -103,6 +113,7 @@
   <input id="search" type="text" placeholder="Search nodes…" autocomplete="off">
   <button id="fit">Fit</button>
   <button id="relayout">Re-layout</button>
+  <button id="collapse">Collapse files</button>
 </div>
 
 <div id="legend" class="panel">
@@ -110,7 +121,7 @@
   <div id="legend-nodes"></div>
   <h2>Relationships</h2>
   <div id="legend-edges"></div>
-  <div class="hint">Hover a node for its docstring &amp; signature; hover an edge for the data it carries. Click a node or edge to focus it &amp; its neighbors — click the background to reset. Drag to pan, scroll to zoom. Boxes group code by file &amp; class.</div>
+  <div class="hint">Hover for details; click a node/edge to focus it &amp; neighbors (background resets). Click a legend entry to hide/show that kind. Double-click a file/class box — or use “Collapse files” — to fold it.</div>
 </div>
 
 <div id="tip"></div>
@@ -153,16 +164,17 @@ function edgeSwatch(color, style) {
 
 /* ---- build the legend from the same kind tables the graph is styled from -- */
 (function buildLegend() {
+  // Each row is a toggle: data-sel is the Cytoscape selector it filters.
   const nodeBox = document.getElementById("legend-nodes");
   for (const [kind, d] of Object.entries(DATA.nodeKinds)) {
     nodeBox.insertAdjacentHTML("beforeend",
-      `<div class="legend-row">${nodeSwatch(d.shape, d.color)}
+      `<div class="legend-row toggle" data-sel='node[kind="${kind}"]'>${nodeSwatch(d.shape, d.color)}
         <span class="text"><span class="lbl">${kind}</span><span class="desc">${d.description}</span></span></div>`);
   }
   const edgeBox = document.getElementById("legend-edges");
   for (const [kind, d] of Object.entries(DATA.edgeKinds)) {
     edgeBox.insertAdjacentHTML("beforeend",
-      `<div class="legend-row">${edgeSwatch(d.color, d.style)}
+      `<div class="legend-row toggle" data-sel='edge[kind="${kind}"]'>${edgeSwatch(d.color, d.style)}
         <span class="text"><span class="lbl">${kind}</span><span class="desc">${d.description}</span></span></div>`);
   }
 })();
@@ -199,7 +211,10 @@ function buildStyle() {
     // edges: thin, smoothly curved, with small understated arrowheads.
     { selector: "edge", style: {
         "width": 1.3, "curve-style": "unbundled-bezier",
-        "control-point-distances": [26], "control-point-weights": [0.5],
+        // per-edge curve offset (set by spreadParallelEdges) so edges sharing a
+        // node pair — including A→B alongside B→A — fan out instead of overlapping.
+        "control-point-distances": ele => [ele.data("cpd") != null ? ele.data("cpd") : 22],
+        "control-point-weights": [0.5],
         "line-cap": "round", "opacity": 0.85,
         "target-arrow-shape": "triangle", "arrow-scale": 0.85,
         "line-color": "#7c8aa0", "target-arrow-color": "#7c8aa0",
@@ -207,10 +222,17 @@ function buildStyle() {
         "text-rotation": "autorotate", "text-background-color": "#0b1120",
         "text-background-opacity": 0.9, "text-background-padding": 2, "overlay-opacity": 0 } },
     { selector: ".dim", style: { "opacity": 0.08, "text-opacity": 0.05 } },
+    { selector: ".filtered", style: { "display": "none" } },
     { selector: "node.hot", style: { "border-color": "#7dd3fc", "border-width": 2.5,
         "text-outline-color": "#0b1120", "color": "#f1f5f9", "z-index": 99 } },
     { selector: "edge.hot", style: { "line-color": "#7dd3fc", "target-arrow-color": "#7dd3fc",
         "width": 2.2, "opacity": 1, "z-index": 99 } },
+    // a folded file/class container reads as a solid card, not a faint box.
+    { selector: "node.cy-expand-collapse-collapsed-node", style: {
+        "background-opacity": 0.16, "border-width": 1.5, "border-color": "rgba(148,163,184,.6)",
+        "shape": "round-rectangle", "text-valign": "center", "color": "#e5e9f0", "font-weight": 600 } },
+    { selector: "edge.cy-expand-collapse-meta-edge", style: {
+        "line-style": "dashed", "opacity": 0.5, "width": 1.4, "target-arrow-shape": "triangle" } },
   ];
   for (const [kind, d] of Object.entries(DATA.nodeKinds)) {
     // give the non-round glyphs a touch more room so labels-below stay legible.
@@ -269,6 +291,26 @@ const cy = cytoscape({
   wheelSensitivity: 0.2,
   minZoom: 0.05, maxZoom: 3,
 });
+
+/* ---- fan out edges that share a node pair so none hide behind another --- */
+(function spreadParallelEdges() {
+  const groups = {};
+  cy.edges().forEach(e => {
+    const s = e.source().id(), t = e.target().id();
+    const key = s < t ? s + " " + t : t + " " + s;
+    (groups[key] = groups[key] || []).push(e);
+  });
+  for (const group of Object.values(groups)) {
+    const n = group.length;
+    group.forEach((e, i) => {
+      // symmetric spread around 0; a lone edge keeps the gentle default curve.
+      const base = n === 1 ? 22 : (i - (n - 1) / 2) * 34;
+      // bidirectional edges bow to opposite sides via the orientation flip.
+      const flip = e.source().id() < e.target().id() ? 1 : -1;
+      e.data("cpd", base * flip);
+    });
+  }
+})();
 
 /* ---- tooltips ----------------------------------------------------------- */
 const tip = document.getElementById("tip");
@@ -351,6 +393,52 @@ document.getElementById("search").addEventListener("input", ev => {
   keep.removeClass("dim");
   match.addClass("hot");
 });
+
+/* ---- legend filtering: click a legend entry to hide/show that kind ------ */
+document.querySelectorAll("#legend .legend-row.toggle").forEach(row => {
+  row.addEventListener("click", () => {
+    const off = row.classList.toggle("off");
+    cy.elements(row.dataset.sel).toggleClass("filtered", off);
+  });
+});
+
+/* ---- collapsible containers -------------------------------------------- */
+/* Fold a file/class box into a single card (edges reroute to it as dashed
+   meta-edges). Double-click a box to toggle one; the button folds them all. */
+let ec = null;
+try {
+  if (window.cytoscapeExpandCollapse) {
+    cytoscape.use(window.cytoscapeExpandCollapse);
+    ec = cy.expandCollapse({
+      layoutBy: null, fisheye: true, animate: true, undoable: false,
+      cueEnabled: true, expandCollapseCuePosition: "top-left", expandCollapseCueSize: 11,
+    });
+  }
+} catch (e) {}
+
+if (ec) {
+  // Emulate double-click (Cytoscape has no native dblclick).
+  let lastId = null, lastT = 0;
+  cy.on("tap", "node", e => {
+    const n = e.target, now = Date.now();
+    if (n.isParent() && n.id() === lastId && now - lastT < 320) {
+      ec.isCollapsible(n) ? ec.collapse(n) : ec.expand(n);
+      cy.elements().removeClass("dim hot");  // drop the focus the first tap applied
+    }
+    lastId = n.id(); lastT = now;
+  });
+
+  let folded = false;
+  const btn = document.getElementById("collapse");
+  btn.onclick = () => {
+    folded = !folded;
+    folded ? ec.collapseAll() : ec.expandAll();
+    btn.textContent = folded ? "Expand all" : "Collapse files";
+    cy.layout(layoutOpts).run();
+  };
+} else {
+  document.getElementById("collapse").style.display = "none";
+}
 
 /* ---- controls ---------------------------------------------------------- */
 document.getElementById("fit").onclick = () => cy.animate({ fit: { padding: 30 }, duration: 400 });
