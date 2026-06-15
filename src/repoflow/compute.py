@@ -43,4 +43,8 @@ def compute(root=".", output="repoflow.json", copy=True, gitignore=True):
               file=sys.stderr)
     else:
         print("\n[repoflow] Copy the text above into your AI assistant.", file=sys.stderr)
+
+    # Printed to the terminal only — deliberately NOT part of the copied prompt.
+    print("[repoflow] Heads up: this is a token-heavy operation — a thorough analysis "
+          "can easily use 10k+ tokens in your AI assistant.", file=sys.stderr)
     return prompt
