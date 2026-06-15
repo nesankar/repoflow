@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "repoflow"
+name = "repoflow-graph"
 version = "0.1.0"
-description = "Turn an AI-generated code property graph into a beautiful, interactive dependency & data-flow map you can actually see."
+description = "Turn an AI-generated code property graph into a beautiful, interactive dependency & data-flow map you can actually see. (Installs the `repoflow` command.)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }

@@ -13,7 +13,7 @@ data actually moves between them.
 See it instantly, no setup:
 
 ```bash
-pip install repoflow
+pip install repoflow-graph
 repoflow present --demo      # opens an interactive graph in your browser
 ```
 
@@ -89,7 +89,7 @@ In the graph:
 ## Install
 
 ```bash
-pip install repoflow
+pip install repoflow-graph     # the command is still `repoflow`
 ```
 
 From source:
