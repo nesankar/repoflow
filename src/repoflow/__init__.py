@@ -10,7 +10,7 @@ Two stages:
      that opens in your browser.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # The single contract between the two stages. Both the prompt (stage 1) and the
 # renderer (stage 2) are built from these. Keep them here so there is exactly
